@@ -22,7 +22,7 @@ object Reminders {
 
     fun scheduleAppointment(context: Context, a: Appointment) {
         val trigger = atTime(a.dateMillis, 9, 0, 1)
-        setOne(context, appointmentCode(a.id), trigger, "غداً موعد مع د. ${a.doctor}" + if (a.time.isNotBlank()) " الساعة ${a.time}" else "", false)
+        setOne(context, appointmentCode(a.id), trigger, "غداً موعد عيادة ${a.place}" + if (a.doctor.isNotBlank()) " مع د. ${a.doctor}" else "", false)
     }
 
     fun scheduleSession(context: Context, s: TherapySession) {
