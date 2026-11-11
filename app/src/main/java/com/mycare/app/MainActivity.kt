@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -686,7 +687,7 @@ private fun FileAttachments(context: Context, storageKey: String, title: String)
                     } catch (_: Exception) {
                         android.widget.Toast.makeText(context, "تعذر فتح الملف", android.widget.Toast.LENGTH_SHORT).show()
                     }
-                }, modifier = Modifier.weight(1f)) { Text("📎 $fileName", textAlign = TextAlign.Start) }
+                }, modifier = Modifier.weight(1f)) { Text("✚  $fileName", textAlign = TextAlign.Start) }
                 TextButton(onClick = {
                     entries.remove(entry)
                     prefs.edit().putStringSet(storageKey, entries.toSet()).apply()
