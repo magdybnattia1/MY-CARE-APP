@@ -2,11 +2,15 @@ package com.mycare.app
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -53,7 +57,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val tabNames = listOf("الرئيسية", "المواعيد", "الجلسات", "الأدوية", "الشكاوى", "الأسئلة", "الملف")
+private val tabNames = listOf("الرئيسية", "الجلسات", "الأدوية", "الشكاوى", "الأسئلة", "الملف")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,12 +88,11 @@ private fun CareApp(dao: CareDao, context: Context, scope: CoroutineScope) {
             }
             when (tab) {
                 0 -> HomeTab(dao)
-                1 -> AppointmentsTab(dao, context, scope)
-                2 -> SessionsTab(dao, context, scope)
-                3 -> MedicationsTab(dao, context, scope)
-                4 -> ComplaintsTab(dao, scope)
-                5 -> QuestionsTab(dao, scope)
-                else -> ProfileTab(dao, scope)
+                1 -> SessionsTab(dao, context, scope)
+                2 -> MedicationsTab(dao, context, scope)
+                3 -> ComplaintsTab(dao, scope)
+                4 -> QuestionsTab(dao, scope)
+                else -> ProfileTab(dao, context, scope)
             }
         }
     }
@@ -216,16 +219,15 @@ private fun <T> ListWithFab(
 
 @Composable
 private fun HomeTab(dao: CareDao) {
-    val appts by dao.observeAppointments().collectAsState(initial = emptyList())
     val sessions by dao.observeSessions().collectAsState(initial = emptyList())
     val meds by dao.observeMedications().collectAsState(initial = emptyList())
     val complaints by dao.observeComplaints().collectAsState(initial = emptyList())
     val questions by dao.observeQuestions().collectAsState(initial = emptyList())
-    val next = appts.filter { it.dateMillis >= startOfToday() }.minByOrNull { it.dateMillis }
+    val next = sessions.filter { it.nextDateMillis >= startOfToday() && it.done < it.total }.minByOrNull { it.nextDateMillis }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("أهلاً بيك", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
-        item { SummaryCard("أقرب موعد", next?.let { "${it.doctor} - ${formatDate(it.dateMillis)} ${it.time}".trim() } ?: "لا يوجد موعد قادم", typeColor("موعد")) }
+        item { SummaryCard("الجلسة القادمة", next?.let { "${it.type} - ${formatDate(it.nextDateMillis)} ${it.time}".trim() } ?: "لا توجد جلسة قادمة مسجلة", typeColor("جلسة")) }
         item { SummaryCard("جلسات جارية", "${sessions.count { it.done < it.total }} جلسة", typeColor("جلسة")) }
         item { SummaryCard("الأدوية المسجلة", "${meds.size} دواء", typeColor("دواء")) }
         item { SummaryCard("شكاوى للمناقشة", "${complaints.count { it.wantDiscuss && !it.discussed }} شكوى", typeColor("شكوى")) }
@@ -247,67 +249,6 @@ private fun SummaryCard(title: String, value: String, accent: Color) {
     ItemCard(accent) {
         Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun AppointmentsTab(dao: CareDao, context: Context, scope: CoroutineScope) {
-    val items by dao.observeAppointments().collectAsState(initial = emptyList())
-    var adding by remember { mutableStateOf(false) }
-    if (adding) {
-        FormDialog(
-            title = "موعد جديد",
-            specs = listOf(
-                FieldSpec("doctor", "اسم الطبيب *"),
-                FieldSpec("specialty", "التخصص"),
-                FieldSpec("place", "المستشفى أو العيادة"),
-                FieldSpec("address", "العنوان"),
-                FieldSpec("date", "التاريخ YYYY-MM-DD *"),
-                FieldSpec("time", "الساعة (مثال 10:30)"),
-                FieldSpec("reason", "سبب الزيارة", multi = true),
-                FieldSpec("notes", "ملاحظات", multi = true)
-            ),
-            onDismiss = { adding = false },
-            onSave = { v ->
-                val millis = parseDate(v.str("date"))
-                if (v.str("doctor").isBlank() || millis == null) return@FormDialog false
-                val item = Appointment(
-                    doctor = v.str("doctor"), specialty = v.str("specialty"), place = v.str("place"),
-                    address = v.str("address"), dateMillis = millis, time = v.str("time"),
-                    reason = v.str("reason"), notes = v.str("notes")
-                )
-                scope.launch {
-                    val id = dao.insertAppointment(item)
-                    Reminders.scheduleAppointment(context, item.copy(id = id))
-                }
-                true
-            }
-        )
-    }
-    ListWithFab(
-        list = items,
-        emptyText = "لا توجد مواعيد. أضف موعدك القادم وهيوصلك تذكير قبله بيوم.",
-        addLabel = "موعد جديد",
-        onAdd = { adding = true },
-        key = { it.id }
-    ) { a ->
-        ItemCard(typeColor("موعد")) {
-            Text(a.doctor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            InfoLine("التخصص", a.specialty)
-            InfoLine("المكان", a.place)
-            InfoLine("العنوان", a.address)
-            Text("التاريخ: ${formatDate(a.dateMillis)} ${a.time}".trim(), style = MaterialTheme.typography.labelLarge)
-            InfoLine("سبب الزيارة", a.reason)
-            InfoLine("ملاحظات", a.notes)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                DeleteButton {
-                    scope.launch {
-                        dao.deleteAppointment(a)
-                        Reminders.cancel(context, Reminders.appointmentCode(a.id))
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -432,6 +373,7 @@ private fun MedicationsTab(dao: CareDao, context: Context, scope: CoroutineScope
             Text(if (m.continuous) "دواء مستمر" else "دواء مؤقت", style = MaterialTheme.typography.labelLarge)
             InfoLine("تعليمات الطبيب", m.instructions)
             InfoLine("ملاحظات", m.notes)
+            FileAttachments(context, "medication_files_${m.id}", "مرفقات الدواء")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 DeleteButton {
                     scope.launch {
@@ -539,7 +481,7 @@ private fun QuestionsTab(dao: CareDao, scope: CoroutineScope) {
 }
 
 @Composable
-private fun ProfileTab(dao: CareDao, scope: CoroutineScope) {
+private fun ProfileTab(dao: CareDao, context: Context, scope: CoroutineScope) {
     val profile by dao.observeProfile().collectAsState(initial = null)
     var editing by remember { mutableStateOf(false) }
     val p = profile ?: Profile()
@@ -563,6 +505,9 @@ private fun ProfileTab(dao: CareDao, scope: CoroutineScope) {
                         InfoLine("الحساسية", p.allergies)
                         InfoLine("الأمراض المزمنة", p.chronic)
                         InfoLine("ملاحظات طبية", p.notes)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    FileAttachments(context, "profile_medical_files", "مرفقات الملف الطبي")
                     }
                 }
             }
@@ -602,5 +547,55 @@ private fun ProfileTab(dao: CareDao, scope: CoroutineScope) {
                 true
             }
         )
+    }
+}
+
+
+@Composable
+private fun FileAttachments(context: Context, storageKey: String, title: String) {
+    val prefs = remember(storageKey) { context.getSharedPreferences("my_care_attachments", Context.MODE_PRIVATE) }
+    val entries = remember(storageKey) {
+        mutableStateListOf<String>().apply { addAll(prefs.getStringSet(storageKey, emptySet()).orEmpty().sorted()) }
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+            val name = try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && index >= 0) cursor.getString(index) else "ملف مرفق"
+                } ?: "ملف مرفق"
+            } catch (_: Exception) { "ملف مرفق" }
+            val entry = uri.toString() + "|" + name.replace("|", " ")
+            if (!entries.contains(entry)) {
+                entries.add(entry)
+                prefs.edit().putStringSet(storageKey, entries.toSet()).apply()
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("＋ رفع ملف أو صورة أو PDF") }
+        entries.forEach { entry ->
+            val parts = entry.split("|", limit = 2)
+            val uriText = parts.firstOrNull().orEmpty()
+            val fileName = parts.getOrNull(1) ?: "ملف مرفق"
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = {
+                    try {
+                        val uri = Uri.parse(uriText)
+                        val mime = context.contentResolver.getType(uri) ?: "*/*"
+                        context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    } catch (_: Exception) {
+                        android.widget.Toast.makeText(context, "تعذر فتح الملف", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }, modifier = Modifier.weight(1f)) { Text("📎 $fileName", textAlign = TextAlign.Start) }
+                TextButton(onClick = {
+                    entries.remove(entry)
+                    prefs.edit().putStringSet(storageKey, entries.toSet()).apply()
+                }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+        if (entries.isEmpty()) Text("لا توجد ملفات مرفقة", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
