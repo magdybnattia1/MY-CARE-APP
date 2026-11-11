@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -140,15 +141,59 @@ private fun FormDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 specs.forEach { spec ->
-                    OutlinedTextField(
-                        value = values[spec.key].orEmpty(),
-                        onValueChange = { values[spec.key] = it },
-                        label = { Text(spec.label) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = !spec.multi,
-                        minLines = if (spec.multi) 2 else 1,
-                        keyboardOptions = KeyboardOptions(keyboardType = if (spec.numeric) KeyboardType.Number else KeyboardType.Text)
-                    )
+                    val current = values[spec.key].orEmpty()
+                    if (spec.key == "clinic") {
+                        var expanded by remember { mutableStateOf(false) }
+                        val clinics = listOf("باطنة", "الألم", "عظام", "جراحة", "أورام دم", "أخرى")
+                        Box(Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = current, onValueChange = { }, readOnly = true,
+                                label = { Text(spec.label) }, placeholder = { Text("اختر العيادة") },
+                                trailingIcon = { Text("⌄") }, modifier = Modifier.fillMaxWidth()
+                            )
+                            Box(Modifier.matchParentSize().clickable { expanded = true })
+                            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                clinics.forEach { clinic ->
+                                    DropdownMenuItem(text = { Text(clinic) }, onClick = {
+                                        values[spec.key] = clinic
+                                        expanded = false
+                                    })
+                                }
+                            }
+                        }
+                    } else if (spec.key in setOf("date", "nextDate", "startDate", "endDate", "birthDate")) {
+                        val dateContext = LocalContext.current
+                        Box(Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = current, onValueChange = { }, readOnly = true,
+                                label = { Text(spec.label) },
+                                placeholder = { Text("اختر اليوم / الشهر / السنة") },
+                                trailingIcon = { Text("▦") }, modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Box(Modifier.matchParentSize().clickable {
+                                val cal = Calendar.getInstance()
+                                parseDate(current)?.let { cal.timeInMillis = it }
+                                android.app.DatePickerDialog(
+                                    dateContext,
+                                    { _, year, month, day ->
+                                        values[spec.key] = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day)
+                                    },
+                                    cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            })
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = current,
+                            onValueChange = { values[spec.key] = it },
+                            label = { Text(spec.label) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = !spec.multi,
+                            minLines = if (spec.multi) 2 else 1,
+                            keyboardOptions = KeyboardOptions(keyboardType = if (spec.numeric) KeyboardType.Number else KeyboardType.Text)
+                        )
+                    }
                 }
             }
         },
