@@ -492,7 +492,7 @@ private fun ProfileTab(dao: CareDao, context: Context, scope: CoroutineScope) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                ItemCard(typeColor("موعد")) {
+                ItemCard(typeColor("جلسة")) {
                     Text("بيانات المريض", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (profile == null) {
                         Text("لم يتم تسجيل بيانات بعد. اضغط تعديل لإضافتها.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -508,7 +508,6 @@ private fun ProfileTab(dao: CareDao, context: Context, scope: CoroutineScope) {
                     }
                     Spacer(Modifier.height(8.dp))
                     FileAttachments(context, "profile_medical_files", "مرفقات الملف الطبي")
-                    }
                 }
             }
         }
