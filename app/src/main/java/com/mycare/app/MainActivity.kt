@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val tabNames = listOf("الرئيسية", "الجلسات", "الأدوية", "الشكاوى", "الأسئلة", "الملف")
+private val tabNames = listOf("الرئيسية", "المواعيد", "الجلسات", "الأدوية", "الشكاوى", "الأسئلة", "الملف")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,10 +88,11 @@ private fun CareApp(dao: CareDao, context: Context, scope: CoroutineScope) {
             }
             when (tab) {
                 0 -> HomeTab(dao)
-                1 -> SessionsTab(dao, context, scope)
-                2 -> MedicationsTab(dao, context, scope)
-                3 -> ComplaintsTab(dao, scope)
-                4 -> QuestionsTab(dao, scope)
+                1 -> AppointmentsTab(dao, context, scope)
+                2 -> SessionsTab(dao, context, scope)
+                3 -> MedicationsTab(dao, context, scope)
+                4 -> ComplaintsTab(dao, scope)
+                5 -> QuestionsTab(dao, scope)
                 else -> ProfileTab(dao, context, scope)
             }
         }
@@ -249,6 +250,58 @@ private fun SummaryCard(title: String, value: String, accent: Color) {
     ItemCard(accent) {
         Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun AppointmentsTab(dao: CareDao, context: Context, scope: CoroutineScope) {
+    val appointments by dao.observeAppointments().collectAsState(initial = emptyList())
+    var adding by remember { mutableStateOf(false) }
+    if (adding) {
+        FormDialog(
+            title = "موعد جديد",
+            specs = listOf(
+                FieldSpec("date", "تاريخ الموعد YYYY-MM-DD *"),
+                FieldSpec("clinic", "اسم العيادة *"),
+                FieldSpec("doctor", "اسم الدكتور (اختياري)")
+            ),
+            onDismiss = { adding = false },
+            onSave = { v ->
+                val date = parseDate(v.str("date")) ?: return@FormDialog false
+                if (v.str("clinic").isBlank()) return@FormDialog false
+                val item = Appointment(
+                    doctor = v.str("doctor"),
+                    place = v.str("clinic"),
+                    dateMillis = date
+                )
+                scope.launch {
+                    val id = dao.insertAppointment(item)
+                    Reminders.scheduleAppointment(context, item.copy(id = id))
+                }
+                true
+            }
+        )
+    }
+    ListWithFab(
+        list = appointments,
+        emptyText = "لا توجد مواعيد مسجلة. اضغط موعد جديد لإضافة موعد العيادة.",
+        addLabel = "موعد جديد",
+        onAdd = { adding = true },
+        key = { it.id }
+    ) { a ->
+        ItemCard(typeColor("موعد")) {
+            Text(a.place, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("تاريخ الموعد: ${formatDate(a.dateMillis)}", style = MaterialTheme.typography.bodyMedium)
+            InfoLine("الدكتور", a.doctor)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                DeleteButton {
+                    scope.launch {
+                        dao.deleteAppointment(a)
+                        Reminders.cancel(context, Reminders.appointmentCode(a.id))
+                    }
+                }
+            }
+        }
     }
 }
 
