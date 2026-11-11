@@ -16,7 +16,6 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val dao = CareDatabase.get(appContext).careDao()
                 val now = System.currentTimeMillis()
-                dao.upcomingAppointments(now).forEach { Reminders.scheduleAppointment(appContext, it) }
                 dao.upcomingSessions(now).forEach { Reminders.scheduleSession(appContext, it) }
                 dao.allMedications()
                     .filter { it.continuous || it.endMillis >= now }
